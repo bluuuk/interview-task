@@ -17,13 +17,17 @@ func GenerateRandomStrings(file string, alphabet []byte, length, amount int) {
 	rand.Seed(time.Now().UnixNano())
 
 	// file handle
-	f, err := os.Create("file")
+	f, err := os.Create(file)
 
-	if err == nil {
+	if err != nil {
 		panic("Could not create file")
 	}
+	// resource clean up
+	defer f.Close()
 
 	writer := bufio.NewWriter(f)
+	// force that we write to the file at the end at least once
+	defer writer.Flush()
 
 	// no need to allocate every time
 	random_line := make([]byte, length)
