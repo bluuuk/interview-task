@@ -33,7 +33,7 @@ The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date & maintained,
 
 #### Schema
 
-We just have to save unique token. [https://www.postgresql.org/docs/9.3/datatype-character.html](Documentation) and [https://dba.stackexchange.com/questions/126003/index-performance-for-char-vs-varchar-postgres](SO) suggest using `character varying` to save the token. We do not need to mark the token with `PRIMARY KEY` because it implies `UNIQUE` which we already check beforehand. In addition, filtering duplicates reduces the calls to insert rows into the database.
+We just have to save unique token. [Documentation](https://www.postgresql.org/docs/9.3/datatype-character.html) and [Stackoverflow](https://dba.stackexchange.com/questions/126003/index-performance-for-char-vs-varchar-postgres) suggest using `character varying` to save the token. We do not need to mark the token with `PRIMARY KEY` because it implies `UNIQUE` which we already check beforehand. In addition, filtering duplicates reduces the calls to insert rows into the database.
 
 ```sql
 CREATE TABLE tokens(
