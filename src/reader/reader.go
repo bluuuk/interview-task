@@ -16,31 +16,42 @@ type Database struct {
 	Port                           int
 }
 
-func writeToDB(ctx context.Context, conn *pgx.Conn, token_stream <-chan string) {
+const query = "INSERT INTO tokens(token) VALUES ($1)"
+
+/*
+	Writes unique tokens to the database in one go
+*/
+func WriteToDB(conn *pgx.Conn, token_stream <-chan string, query string) {
 
 	log.Println("Start writing to DB")
 
 	// caching happens in the lib pgx
-	const query = "INSERT INTO tokens(token) VALUES ($1)"
 
 	batch := &pgx.Batch{}
 
+	// Adding every INSERT to a batch such that we only have one big transfer to the DB
 	for token := range token_stream {
 		batch.Queue(query, token)
 	}
 
-	batch_request := conn.SendBatch(ctx, batch)
-	defer batch_request.Close()
+	// Sending one request to write all tokens
+	batch_request := conn.SendBatch(context.Background(), batch)
 	_, err := batch_request.Exec()
 
 	if err != nil {
 		panic(err)
 	}
 
+	defer batch_request.Close()
+
 	log.Println("Finish writing to DB")
 }
 
-func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
+/*
+	Creates a single database connection
+*/
+
+func ConnectToDB(db Database) *pgx.Conn {
 	// build connection url according to https://github.com/jackc/pgx
 	connect_url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 		db.Username,
@@ -51,8 +62,7 @@ func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
 	)
 
 	log.Println("Connecting to " + connect_url)
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, connect_url)
+	conn, err := pgx.Connect(context.Background(), connect_url)
 
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err)
@@ -61,13 +71,16 @@ func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
 
 	log.Println("Connected successfully")
 
-	return ctx, conn
+	return conn
 }
 
-func Read(input_file, result_file string, ctx context.Context, conn *pgx.Conn) {
+/*
+	Read an input file, write unique tokens to a data base and output duplicates with their frequency into a file
+*/
+
+func Read(input_file, result_file string, conn *pgx.Conn) {
 
 	f_in, err := os.Open(input_file)
-	var wg sync.WaitGroup
 
 	if err != nil {
 		panic("File does not exist!")
@@ -84,13 +97,15 @@ func Read(input_file, result_file string, ctx context.Context, conn *pgx.Conn) {
 	scanner.Split(bufio.ScanLines)
 
 	// Prepare go routine for sql insertions
-	// We do not want to finish this routine if not all tokens are written into the db
 	ch_token := make(chan string)
+
+	// We do not want to finish this routine if not all tokens are written into the db
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
-		writeToDB(ctx, conn, ch_token)
+		WriteToDB(conn, ch_token, query)
 	}()
 
 	log.Println("Start scanning file")
@@ -128,8 +143,8 @@ func Read(input_file, result_file string, ctx context.Context, conn *pgx.Conn) {
 	// resource clean up
 	defer f_out.Close()
 
-	writer := bufio.NewWriter(f_out)
 	// header for csv
+	writer := bufio.NewWriter(f_out)
 	writer.WriteString("token,freq\n")
 
 	log.Println("Writing duplicates to file")
@@ -147,6 +162,7 @@ func Read(input_file, result_file string, ctx context.Context, conn *pgx.Conn) {
 		}
 	}
 
+	// ensure at least one flush such that the buffer is empty
 	defer writer.Flush()
 
 	// some statistics

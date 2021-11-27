@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"interview/src/generator"
 	"interview/src/reader"
 )
@@ -23,18 +24,18 @@ func main() {
 		Port:     5433,
 	}
 
-	ctx, conn := reader.ConnectToDB(db)
+	conn := reader.ConnectToDB(db)
 
 	//clear the table
-	_, err := conn.Exec(ctx, "truncate table tokens")
+	_, err := conn.Exec(context.Background(), "truncate table tokens")
 
 	if err != nil {
 		panic("Could not clear")
 	}
 
-	defer conn.Close(ctx)
+	defer conn.Close(context.Background())
 
 	generator.GenerateRandomStrings(input_file, []byte(alphabet), line_length, total_lines)
-	reader.Read(input_file, output_file, ctx, conn)
+	reader.Read(input_file, output_file, conn)
 
 }

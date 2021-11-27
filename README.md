@@ -12,28 +12,28 @@
 ### Go
 
 1. For a simple implementation, a line by line read in should do the job.
-  - Further io/performance improvement with `bufio`, but needs testing
+     - Further io/performance improvement with `bufio`, but needs testing
 2. Checking for duplicates
 
-  > $n = 10^7$
+      > $n = 10^7$
 
-  - A `Map[string]int` can do the job with low programming complexity, because access is O(1) and filling it is O(n)
-    - We can even hint `make` with $10^7$ to reduce the number of map resizing
-  - Radix sort with 7 iterations will be O(n * 7)
-    - But should be very memory intensiv, because we have to copy $10^7$ strings around in every bucket
-  - Couting sort will be O(n + 26^7) which does not look promosing because of the possible huge input space
+     - A `Map[string]int` can do the job with low programming complexity, because access is O(1) and filling it is O(n)
+       - We can even hint `make` with $n$ to reduce the number of map resizes
+     - Radix sort with 7 iterations will be O(n * 7)
+       - But should be very memory intensive, because we have to copy $10^7$ strings around in every bucket
+     - Counting sort will be O(n + 26^7) which does not look promising because of the possible huge input space
 
-  $\implies$ https://www.youtube.com/watch?v=kVgy1GSDHG8
+     $\implies$ https://www.youtube.com/watch?v=kVgy1GSDHG8
   
 ### Database
   
 > I have never used Postgres, so I will give it a try
 
-The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date, so I'll use it.
+The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date & maintained, so I'll use it.
 
 #### Schema
 
-We just have to save tokens. (Documentation)[https://www.postgresql.org/docs/9.3/datatype-character.html] and (SO)[https://dba.stackexchange.com/questions/126003/index-performance-for-char-vs-varchar-postgres] suggest using `character varying` to save the token. We do not need to mark the token with `PRIMARY KEY` because it implies `UNIQUE` which we already check beforehand. In addition, filtering duplicates reduces the calls to insert rows into the database.
+We just have to save unique token. (Documentation)[https://www.postgresql.org/docs/9.3/datatype-character.html] and (SO)[https://dba.stackexchange.com/questions/126003/index-performance-for-char-vs-varchar-postgres] suggest using `character varying` to save the token. We do not need to mark the token with `PRIMARY KEY` because it implies `UNIQUE` which we already check beforehand. In addition, filtering duplicates reduces the calls to insert rows into the database.
 
 ```sql
 CREATE TABLE tokens(
@@ -43,9 +43,7 @@ CREATE TABLE tokens(
 
 ## Changelog
 
-### Slow SQL
-
-#### Issue
+### Issue
 
 > We issue one `Insert` when a new token pops up. Therefore, we have for $n$ unique tokens $n$ calls to `conn.Exec`. Also, it seems that the call is blocking such that it should be put into a `go-routine`.
 
@@ -64,11 +62,14 @@ $>$ 30 minutes with SQL
 ```
 2 seconds without SQL
 
+### Ideas
 
 1. Issues the `Insert` in batches to reduce IO and increase speed
 2. We can spin up multiple connections to the database
 
-#### Results
+### Results
+
+Implementing the first idea leads to a total runtime of roughly 4 seconds.
 
 ```
 2021/11/27 00:39:42 Connecting to postgres://postgres:4eIyCpDzAPumf7WUwixo@localhost:5432/interview
@@ -81,4 +82,4 @@ $>$ 30 minutes with SQL
 2021/11/27 00:39:46 Observed 823481 collision with a collision rate of 0.0000728%
 ```
 
-However, `pooling` i.e. multiple connections do not increase performance. Therefore, batching solves our problem of slow db writes.
+However, `pooling` i.e. multiple connections do not increase performance. Therefore, batching solves our problem of slow db writes by reducing IO.

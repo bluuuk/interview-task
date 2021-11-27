@@ -1,63 +1,72 @@
-package reader_test
+package generator_test
 
 import (
-	"bufio"
-	"interview/src/generator"
-	"os"
+	"context"
+	"interview/src/reader"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-const (
-	file        = "data.txt"
-	alphabet    = "abcdefghijklmnopqrstuvwxyz"
-	line_length = 7
-	total_lines = 10_000_000
-)
+var db reader.Database = reader.Database{
+	Username: "postgres",
+	Password: "postgres",
+	Host:     "localhost",
+	Name:     "interview",
+	Port:     5433,
+}
 
-func TestFileCreation(test *testing.T) {
-	file := uuid.New().String() + ".txt"
+const batch_size int = 10_000_000
+
+func TestDBWrite(test *testing.T) {
+
+	conn := reader.ConnectToDB(db)
 
 	// test creation time
 
-	start := time.Now()
-	generator.GenerateRandomStrings(file, []byte(alphabet), line_length, total_lines)
-	duration := time.Since(start)
-
-	test.Logf("Total time to generate strings: %s", duration)
-
-	f, err := os.Open(file)
+	_, err := conn.Exec(context.Background(), "CREATE TABLE test(token VARCHAR(7) NOT NULL)")
 
 	if err != nil {
-		test.Error("File was not created")
+		test.Error("Could not create test table")
 	}
 
-	// go will go through the defers like a stack
-	defer f.Close()
-	defer os.Remove(file)
+	tokens := make(chan string, batch_size)
 
-	scanner := bufio.NewScanner(f)
-	scanner.Split(bufio.ScanLines)
+	// writing random uuid string
+	for k := 0; k < batch_size; k++ {
+		// strings of length 7
+		tokens <- uuid.NewString()[:7]
+	}
+	// signal that we are done
+	close(tokens)
 
-	/*
-		1. test the length of each line
-		2. test the total amount of lines
-	*/
+	test.Log("Done generating tokens")
 
-	var count int = 0
-	for scanner.Scan() {
-		text := scanner.Text()
+	const query = "INSERT INTO test(token) VALUES ($1)"
 
-		if len(text) != line_length {
-			test.Errorf("Unequal line length for string %s with given length of %d", text, line_length)
-		}
+	start := time.Now()
+	reader.WriteToDB(conn, tokens, query)
+	duration := time.Since(start)
 
-		count++
+	test.Logf("Took %s to write %d tokens into the db", duration, batch_size)
+
+	// test number of tokens in the db
+
+	var amount int
+	conn.QueryRow(context.Background(), "Select Count(*) from test").Scan(&amount)
+
+	if amount != batch_size {
+		test.Errorf("Expected amount %d, actual amount %d", batch_size, amount)
 	}
 
-	if count != total_lines {
-		test.Errorf("Expected %d lines, encountered only %d lines", total_lines, count)
+	// cleanup
+
+	_, err = conn.Exec(context.Background(), "DROP TABLE test")
+
+	if err != nil {
+		test.Error("Could not clean up table")
 	}
+
+	defer conn.Close(context.Background())
 }
