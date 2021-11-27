@@ -83,3 +83,9 @@ Implementing the first idea leads to a total runtime of roughly 4 seconds.
 ```
 
 However, `pooling` i.e. multiple connections do not increase performance. Therefore, batching solves our problem of slow db writes by reducing IO.
+
+## Setup
+
+1. Be sure to have docker installed
+2. Execute `setup.sh` which will pull a `postgres` image, adds a user and creates a table
+3. Run `go run main.go`
