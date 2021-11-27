@@ -20,7 +20,7 @@
   - A `Map[string]int` can do the job with low programming complexity, because access is O(1) and filling it is O(n)
     - We can even hint `make` with $10^7$ to reduce the number of map resizing
   - Radix sort with 7 iterations will be O(n * 7)
-    - But should be very memory intensiv, because we have to copy $10^7$ strings around in every bucket   
+    - But should be very memory intensiv, because we have to copy $10^7$ strings around in every bucket
   - Couting sort will be O(n + 26^7) which does not look promosing because of the possible huge input space
 
   $\implies$ https://www.youtube.com/watch?v=kVgy1GSDHG8
@@ -36,9 +36,49 @@ The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date, so I'll use 
 We just have to save tokens. (Documentation)[https://www.postgresql.org/docs/9.3/datatype-character.html] and (SO)[https://dba.stackexchange.com/questions/126003/index-performance-for-char-vs-varchar-postgres] suggest using `character varying` to save the token. We do not need to mark the token with `PRIMARY KEY` because it implies `UNIQUE` which we already check beforehand. In addition, filtering duplicates reduces the calls to insert rows into the database.
 
 ```sql
-CREATE TABLE TOKENS(
-  token VARCAHR(7) NOT NULL
+CREATE TABLE tokens(
+  token VARCHAR(7) NOT NULL
 )
 ```
 
+## Changelog
 
+### Slow SQL
+
+#### Issue
+
+> We issue one `Insert` when a new token pops up. Therefore, we have for $n$ unique tokens $n$ calls to `conn.Exec`. Also, it seems that the call is blocking such that it should be put into a `go-routine`.
+
+This is visible, if we compare the time spent with and without sql insertions:
+
+```
+2021/11/26 19:44:54 Start scanning file
+2021/11/26 20:25:35 Finish scanning file
+```
+
+$>$ 30 minutes with SQL
+
+```
+2021/11/26 22:46:47 Start scanning file
+2021/11/26 22:46:49 Finish scanning file
+```
+2 seconds without SQL
+
+
+1. Issues the `Insert` in batches to reduce IO and increase speed
+2. We can spin up multiple connections to the database
+
+#### Results
+
+```
+2021/11/27 00:39:42 Connecting to postgres://postgres:4eIyCpDzAPumf7WUwixo@localhost:5432/interview
+2021/11/27 00:39:42 Connected successfully
+2021/11/27 00:39:43 Start scanning file
+2021/11/27 00:39:43 Start writing to DB
+2021/11/27 00:39:46 Finish scanning file
+2021/11/27 00:39:46 Writing duplicates to file
+2021/11/27 00:39:46 Finish writing to DB
+2021/11/27 00:39:46 Observed 823481 collision with a collision rate of 0.0000728%
+```
+
+However, `pooling` i.e. multiple connections do not increase performance. Therefore, batching solves our problem of slow db writes.

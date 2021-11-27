@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/jackc/pgx/v4"
 )
@@ -15,43 +16,33 @@ type Database struct {
 	Port                           int
 }
 
-/*
-func writeToDB(db Database, token_stream <-chan string) {
+func writeToDB(ctx context.Context, conn *pgx.Conn, token_stream <-chan string) {
 
-	// build connection url according to https://github.com/jackc/pgx
-	connect_url := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s",
-		db.username,
-		db.password,
-		db.host,
-		db.port,
-		db.name,
-	)
+	log.Println("Start writing to DB")
 
-	log.Println("Connecting to :" + connect_url)
+	// caching happens in the lib pgx
+	const query = "INSERT INTO tokens(token) VALUES ($1)"
 
-	k := pgx.ConnConfig{}
-	pgx.Connect
-	conn, err := pgx.Connect(context.Background(), connect_url)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
-	}
-
-	log.Println("Connected successfully")
-
-	defer conn.Close(context.Background())
+	batch := &pgx.Batch{}
 
 	for token := range token_stream {
-		_, err := conn.Exec()
+		batch.Queue(query, token)
 	}
-}
 
-*/
+	batch_request := conn.SendBatch(ctx, batch)
+	defer batch_request.Close()
+	_, err := batch_request.Exec()
+
+	if err != nil {
+		panic(err)
+	}
+
+	log.Println("Finish writing to DB")
+}
 
 func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
 	// build connection url according to https://github.com/jackc/pgx
-	connect_url := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s",
+	connect_url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
 		db.Username,
 		db.Password,
 		db.Host,
@@ -59,7 +50,7 @@ func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
 		db.Name,
 	)
 
-	log.Println("Connecting to :" + connect_url)
+	log.Println("Connecting to " + connect_url)
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, connect_url)
 
@@ -73,9 +64,10 @@ func ConnectToDB(db Database) (context.Context, *pgx.Conn) {
 	return ctx, conn
 }
 
-func Read(input_file, result_file string, db Database) {
+func Read(input_file, result_file string, ctx context.Context, conn *pgx.Conn) {
 
 	f_in, err := os.Open(input_file)
+	var wg sync.WaitGroup
 
 	if err != nil {
 		panic("File does not exist!")
@@ -84,10 +76,6 @@ func Read(input_file, result_file string, db Database) {
 	// after method execution, close the file
 	defer f_in.Close()
 
-	// setup connection
-	ctx, conn := ConnectToDB(db)
-	defer conn.Close(ctx)
-
 	// we count the occurrences
 	counter := make(map[string]int, 1e7)
 
@@ -95,9 +83,15 @@ func Read(input_file, result_file string, db Database) {
 	scanner := bufio.NewScanner(f_in)
 	scanner.Split(bufio.ScanLines)
 
-	// Send entries over
-	// ch_token := make(chan string)
-	// ch_done := make(chan bool)
+	// Prepare go routine for sql insertions
+	// We do not want to finish this routine if not all tokens are written into the db
+	ch_token := make(chan string)
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		writeToDB(ctx, conn, ch_token)
+	}()
 
 	log.Println("Start scanning file")
 
@@ -111,14 +105,12 @@ func Read(input_file, result_file string, db Database) {
 
 		// send the token over if it is the first occurrence
 		if !check {
-			// We do not need to prepare/cache statements, the lib will do https://github.com/jackc/pgx/issues/791
-			cmdtag, err := conn.Exec(ctx, "INSERT INTO tokens(token) VALUES ($1)", token)
-			if err != nil {
-				log.Printf("Failed for token %s with result %s", token, cmdtag)
-			}
-			//ch_token <- token
+			ch_token <- token
 		}
 	}
+
+	// close the channel so signal that no new tokens will come
+	close(ch_token)
 
 	log.Println("Finish scanning file")
 
@@ -126,16 +118,7 @@ func Read(input_file, result_file string, db Database) {
 		log.Fatal(err)
 	}
 
-	// signal that no more tokens will come
-	// ch_done <- false
-
-	// https://stackoverflow.com/questions/8593645/is-it-ok-to-leave-a-channel-open
-	// defer resource clean up
-	// defer close(ch_done)
-	// defer close(ch_token)
-
 	// Write duplicate tokens into a file with their freq
-
 	f_out, err := os.Create(result_file)
 
 	if err != nil {
@@ -166,9 +149,12 @@ func Read(input_file, result_file string, db Database) {
 
 	defer writer.Flush()
 
+	// some statistics
 	log.Printf("Observed %d collision with a collision rate of %.7f%%\n",
 		collision,
 		1-float32(collision)/float32(len(counter)),
 	)
 
+	// to ensure that writing to the db finishes
+	wg.Wait()
 }

@@ -15,14 +15,26 @@ const (
 
 func main() {
 
-	var db reader.Database = reader.Database{
+	db := reader.Database{
 		Username: "postgres",
-		Password: "4eIyCpDzAPumf7WUwixo",
+		Password: "postgres",
 		Host:     "localhost",
 		Name:     "interview",
-		Port:     5432,
+		Port:     5433,
 	}
 
+	ctx, conn := reader.ConnectToDB(db)
+
+	//clear the table
+	_, err := conn.Exec(ctx, "truncate table tokens")
+
+	if err != nil {
+		panic("Could not clear")
+	}
+
+	defer conn.Close(ctx)
+
 	generator.GenerateRandomStrings(input_file, []byte(alphabet), line_length, total_lines)
-	reader.Read(input_file, output_file, db)
+	reader.Read(input_file, output_file, ctx, conn)
+
 }
