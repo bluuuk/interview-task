@@ -20,16 +20,16 @@
      - A `Map[string]int` can do the job with low programming complexity, because access is O(1) and filling it is O(n)
        - We can even hint `make` with $n$ to reduce the number of map resizes
      - Radix sort with 7 iterations will be O(n * 7)
-       - But should be very memory intensive, because we have to copy $10^7$ strings around in every bucket
+       - But should be very memory intensive
      - Counting sort will be O(n + 26^7) which does not look promising because of the possible huge input space
 
      $\implies$ https://www.youtube.com/watch?v=kVgy1GSDHG8
-  
+
+My goal is to do most of the work in the main memory after loading in the tokens from a file.
+
 ### Database
   
-> I have never used Postgres, so I will give it a try
-
-The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date & maintained, so I'll use it.
+> I have never used Postgres, so I will give it a try. The lib (PGX)[https://github.com/jackc/pgx] seems to be up to date & maintained, so I'll use it.
 
 #### Schema
 
