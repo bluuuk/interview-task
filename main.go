@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"interview/src/generator"
 	"interview/src/reader"
+	"log"
+	"os"
+	"runtime/pprof"
 )
 
 const (
@@ -15,6 +19,19 @@ const (
 )
 
 func main() {
+
+	// taken from https://go.dev/blog/pprof
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	db := reader.Database{
 		Username: "postgres",

@@ -30,13 +30,14 @@ func GenerateRandomStrings(file string, alphabet []byte, length, amount int) {
 	defer writer.Flush()
 
 	// no need to allocate every time
-	random_line := make([]byte, length)
+	random_line := make([]byte, length+1)
+	random_line[length] = '\n'
 
 	for i := 0; i < amount; i++ {
 		for k := 0; k < length; k++ {
 			char := rand.Intn(length)
 			random_line[k] = alphabet[char]
 		}
-		writer.WriteString(string(random_line) + "\n")
+		writer.WriteString(string(random_line))
 	}
 }

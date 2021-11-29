@@ -72,20 +72,24 @@ $>$ 30 minutes with SQL
 Implementing the first idea leads to a total runtime of roughly 4 seconds.
 
 ```
-2021/11/27 00:39:42 Connecting to postgres://postgres:4eIyCpDzAPumf7WUwixo@localhost:5432/interview
-2021/11/27 00:39:42 Connected successfully
 2021/11/27 00:39:43 Start scanning file
 2021/11/27 00:39:43 Start writing to DB
 2021/11/27 00:39:46 Finish scanning file
 2021/11/27 00:39:46 Writing duplicates to file
 2021/11/27 00:39:46 Finish writing to DB
-2021/11/27 00:39:46 Observed 823481 collision with a collision rate of 0.0000728%
 ```
 
-However, `pooling` i.e. multiple connections do not increase performance. Therefore, batching solves our problem of slow db writes by reducing IO.
+However, `pooling` i.e. multiple connections did not increase performance. Therefore, batching solves our problem of slow db writes by reducing IO.
+
+### Profiling
+
+> Just wanted to test it out. Most of the time is spent in the hashmap.
+
+![Profiling](profiling.svg)
 
 ## Setup
 
 1. Be sure to have docker installed
-2. Execute `setup.sh` which will pull a `postgres` image, adds a user and creates a table
-3. Run `go run main.go`
+2. Navigate to the main dir `cd interview-task`
+3. Execute `setup.sh` which will pull a `postgres` image, adds a user and creates a table
+4. Run `go run main.go`

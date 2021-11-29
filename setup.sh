@@ -10,7 +10,7 @@ docker run -p 5433:5432 -d \
   -e POSTGRES_DB=interview \
   postgres
 
-sleep 1s
+sleep 5s
 
 # create table tokens
 psql postgresql://postgres:postgres@localhost:5433/interview -f setup.sql
