@@ -1,3 +1,3 @@
 CREATE TABLE tokens(
-  token VARCHAR(7) NOT NULL
+  token TEXT NOT NULL
 )

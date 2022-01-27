@@ -24,27 +24,30 @@ const query = "INSERT INTO tokens(token) VALUES ($1)"
 func WriteToDB(conn *pgx.Conn, token_stream <-chan string, query string) {
 
 	log.Println("Start writing to DB")
-
-	// caching happens in the lib pgx
-
-	batch := &pgx.Batch{}
+	var data []string
 
 	// Adding every INSERT to a batch such that we only have one big transfer to the DB
 	for token := range token_stream {
-		batch.Queue(query, token)
+		data = append(data, token)
 	}
 
-	// Sending one request to write all tokens
-	batch_request := conn.SendBatch(context.Background(), batch)
-	_, err := batch_request.Exec()
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer batch_request.Close()
+	// Using COPY to write to the DB (https://pkg.go.dev/github.com/jackc/pgx/v4#hdr-Copy_Protocol)
+	_, err := conn.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"tokens"},
+		[]string{"token"},
+		pgx.CopyFromSlice(len(data), func(i int) ([]interface{}, error) {
+			return []interface{}{data[i]}, nil
+		}),
+	)
 
 	log.Println("Finish writing to DB")
+
+	if err != nil {
+		log.Print(err)
+	}
+
+	defer conn.Close(context.Background())
 }
 
 /*
